@@ -44,7 +44,9 @@ import { CastUIContainer } from './components/castuicontainer';
 import { UIConditionContext, UIManager } from './uimanager';
 import { UIConfig } from './uiconfig';
 import { PlayerAPI } from 'bitmovin-player';
-import { i18n } from './localization/i18n';
+import { i18n, LocalizableText } from './localization/i18n';
+import { Button } from './components/button';
+import { ListBox, SettingsPanelPageBackButton, SubtitleListBox } from './main';
 
 export namespace UIFactory {
 
@@ -53,7 +55,9 @@ export namespace UIFactory {
   }
 
   export function buildDefaultSmallScreenUI(player: PlayerAPI, config: UIConfig = {}): UIManager {
-    return UIFactory.buildModernSmallScreenUI(player, config);
+    //return UIFactory.buildModernSmallScreenUI(player, config);
+    return UIFactory.buildNPOUI(player, config);
+
   }
 
   export function buildDefaultCastReceiverUI(player: PlayerAPI, config: UIConfig = {}): UIManager {
@@ -404,5 +408,339 @@ export namespace UIFactory {
 
   export function buildModernCastReceiverUI(player: PlayerAPI, config: UIConfig = {}): UIManager {
     return new UIManager(player, modernCastReceiverUI(), config);
+  }
+
+  export function buildNPOUI(player: PlayerAPI, config: UIConfig = {}): UIManager {
+    return new UIManager(player, NPOUI(player), config);
+  }
+
+  export function NPOUI(player: PlayerAPI) {
+
+    //npoplayer is the class used for making UI component references
+
+    // Constants
+    const interval = 10;
+    const label_settings: LocalizableText = i18n.getLocalizer('settings');
+    const label_videoquality: LocalizableText = i18n.getLocalizer('settings.video.quality');
+    const label_speed: LocalizableText = i18n.getLocalizer('speed');
+    const label_subtitles: LocalizableText = i18n.getLocalizer('settings.subtitles');
+    const label_audioquality: LocalizableText = i18n.getLocalizer('settings.audio.quality');
+    const label_audiotrack: LocalizableText = i18n.getLocalizer('settings.audio.track');
+    const label_auto: LocalizableText = i18n.getLocalizer('auto');
+
+    ///////////////////////////////////////////////
+    // Big buttons Small Screen
+    ///////////////////////////////////////////////
+
+    let bigPlayToggle = new PlaybackToggleButton({cssClass:'ui-playbacktogglebutton'});
+    let bigRewindButton = new Button({cssClass: 'ui-rewindbutton bmpui-ui-button'});
+    let bigForwardButton = new Button({cssClass: 'ui-forwardbutton bmpui-ui-button'});
+
+    function rewind() {
+        if(player!=null){
+            if(player.isLive()){
+                player.timeShift(player.getTimeShift() - interval);
+            }else{
+                player.seek(Math.max(0, player.getCurrentTime() - interval));
+            }
+        }
+    }
+
+    function forward() {
+        if(player!=null){
+            if(player.isLive()){
+                player.timeShift(Math.min(0,player.getTimeShift() + interval));
+            }else{
+                player.seek(Math.min(player.getDuration(), player.getCurrentTime() + interval));
+            }
+        }
+    }
+
+    let rewindButton = new Button({cssClass: 'ui-rewindbutton bmpui-ui-button'});
+    rewindButton.onClick.subscribe(rewind);
+    bigRewindButton.onClick.subscribe(rewind);
+
+    let forwardButton = new Button({cssClass: 'ui-forwardbutton bmpui-ui-button'});
+    forwardButton.onClick.subscribe(forward);
+    bigForwardButton.onClick.subscribe(forward);
+
+    let middleButtons = new ControlBar({
+        components: [
+            bigRewindButton,
+            bigPlayToggle,
+            bigForwardButton
+        ],
+        cssClasses: ['controlbar-middle'],
+    });
+
+    ///////////////////////////////////////////////
+    // Settings Panel
+    ///////////////////////////////////////////////
+    let subtitleListBox = new SubtitleListBox();
+    let speedListBox = new ListBox({items:[{key:'0.25',label:'0.25x'},{key:'0.5',label:'0.5x'},{key:'1',label:'1x'},{key:'1.5',label:'1.5x'},{key:'2',label:'2x'}]});
+    let qualityListBox = new ListBox();
+
+    subtitleListBox.onItemSelected.subscribe((e)=>{
+        e.getItems().forEach(function(item){
+            if(item.key == e.getSelectedItem()){
+                subtitleSettingsOpenButton.setText(item.label);
+            }
+        });
+        setTimeout(()=>{settingsPanel.setActivePage(mainSettingsPage);},100);
+    });
+
+    speedListBox.selectItem('1');
+    speedListBox.onItemSelected.subscribe((source,args)=>{
+        source.getItems().forEach(function(item){
+            if(item.key == args){
+                player?.setPlaybackSpeed(parseFloat(item.key));
+                speedSettingsOpenButton.setText(item.label);
+                speedListBox.selectItem(item.key);
+            }
+        });
+
+        setTimeout(()=>{settingsPanel.setActivePage(mainSettingsPage);},100);
+    });
+
+    qualityListBox.selectItem('auto');
+    qualityListBox.onItemSelected.subscribe((source,args)=>{
+        source.getItems().forEach(function(item){
+            if(item.key == args){
+                player?.setVideoQuality(item.key);
+                qualitySettingsOpenButton.setText(item.label);
+                qualityListBox.selectItem(item.key);
+            }
+        });
+        setTimeout(()=>{settingsPanel.setActivePage(mainSettingsPage);},100);
+    });
+
+    let subtitlePanelPage = new SettingsPanelPage({
+        components: [
+            new Button({cssClass:'settings-trigger'}),
+            new SettingsPanelItem('', subtitleListBox),
+        ],
+        cssClasses: ['listbox-panel']
+    });
+
+    let speedPanelPage = new SettingsPanelPage({
+        components: [
+            new Button({cssClass:'settings-trigger'}),
+            new SettingsPanelItem('', speedListBox),
+        ],
+        cssClasses: ['listbox-panel']
+    });
+
+
+    let qualityPanelPage = new SettingsPanelPage({
+        components: [
+            new Button({cssClass:'settings-trigger'}),
+            new SettingsPanelItem('', qualityListBox),
+        ],
+        cssClasses: ['listbox-panel']
+    });
+
+    let settingsTriggerButton = new Button({cssClass:'settings-trigger'});
+
+    let mainSettingsPage = new SettingsPanelPage({
+        components: [
+            settingsTriggerButton,
+            new Label({text: label_settings, cssClass:'setting-header'}),
+            new SettingsPanelItem(label_audioquality, new AudioQualitySelectBox()),
+            new SettingsPanelItem(label_audiotrack, new AudioTrackSelectBox()),
+        ],
+        cssClasses: ['main-panel']
+
+    });
+
+    mainSettingsPage.onActive.subscribeOnce(function(){
+        qualityListBox.addItem('auto', label_auto);
+        player?.getAvailableVideoQualities().forEach(function(quality){
+            qualityListBox.addItem(quality.id,quality.label??'test');
+        });
+        qualityListBox.selectItem('auto');
+    });
+    
+    let settingsPanel = new SettingsPanel({
+        components: [
+            mainSettingsPage,
+            subtitlePanelPage,
+            speedPanelPage,
+            qualityPanelPage
+        ],
+        hidden: true,
+        pageTransitionAnimation: false,
+    });
+
+    let subtitleSettingsOpenButton = new SettingsPanelPageOpenButton({
+        targetPage: subtitlePanelPage,
+        container: settingsPanel,
+        text: 'Nederlands',
+        cssClasses: ['listbox-pager-button'],
+    });
+
+    let speedSettingsOpenButton = new SettingsPanelPageOpenButton({
+        targetPage: speedPanelPage,
+        container: settingsPanel,
+        text: '1x',
+        cssClasses: ['listbox-pager-button']
+    });
+
+    let qualitySettingsOpenButton = new SettingsPanelPageOpenButton({
+        targetPage: qualityPanelPage,
+        container: settingsPanel,
+        text: 'automatisch',
+        cssClasses: ['listbox-pager-button']
+    });
+
+    //BACK BUTTONS
+    let settingsBackButton_subtitles = new SettingsPanelPageBackButton({
+        targetPage: mainSettingsPage,
+        container: settingsPanel,
+        text: 'Ondertiteling',
+        cssClasses: ['settings-back-button']
+    });
+
+    let settingsBackButton_speed = new SettingsPanelPageBackButton({
+        targetPage: mainSettingsPage,
+        container: settingsPanel,
+        text: 'Snelheid',
+        cssClasses: ['settings-back-button']
+    });
+
+    let settingsBackButton_quality = new SettingsPanelPageBackButton({
+        targetPage: mainSettingsPage,
+        container: settingsPanel,
+        text: 'Kwaliteit',
+        cssClasses: ['settings-back-button']
+    });
+
+    let subtitlesPanelItem = new SettingsPanelItem(label_subtitles, subtitleSettingsOpenButton, {hidden:true});
+    let speedPanelItem = new SettingsPanelItem(label_speed, speedSettingsOpenButton);
+    let qualityPanelItem = new SettingsPanelItem(label_videoquality, qualitySettingsOpenButton, {hidden:true});
+            
+    mainSettingsPage.addComponent(subtitlesPanelItem);
+    mainSettingsPage.addComponent(speedPanelItem);
+    mainSettingsPage.addComponent(qualityPanelItem);
+    subtitlePanelPage.addComponent(settingsBackButton_subtitles);
+    speedPanelPage.addComponent(settingsBackButton_speed);
+    qualityPanelPage.addComponent(settingsBackButton_quality);
+
+    let subtitleOverlay = new SubtitleOverlay();
+
+    ///////////////////////////////////////////////
+    // Error Message Overlay
+    ///////////////////////////////////////////////
+
+    let errorMessageOverlay = new ErrorMessageOverlay();
+    // npoplayer.uiComponents.errorMessageOverlay = errorMessageOverlay;
+
+    ///////////////////////////////////////////////
+    // Call To Action buttons
+    ///////////////////////////////////////////////
+
+    let skipIntroButton = new Button({cssClass: 'ui-textbutton ui-skipintrobutton bmpui-ui-button bmpui-hidden', text: 'Intro overslaan', hidden:true});
+    skipIntroButton.onClick.subscribe(() => {
+        if(player!=null){
+            if(true){ //TODO Check if metadata has intro data
+                player.seek(96);
+            }
+        }
+    });
+
+    let goBackLiveButton = new Button({cssClass: 'ui-textbutton ui-backtolivebutton bmpui-ui-button', text: 'Terug naar live', hidden:true});
+    goBackLiveButton.onClick.subscribe(() => {
+        if(player!=null){
+            if(player.isLive()){
+                player.timeShift(0);
+            }
+        }
+    });
+
+    let ctaBar = new Container({
+        components: [
+            skipIntroButton,
+            goBackLiveButton,
+        ],
+        cssClasses: ['controlbar-textbuttons'],
+    });
+
+    ///////////////////////////////////////////////
+    // UI Bars
+    ///////////////////////////////////////////////
+    let topBar = new TitleBar({
+        components: [
+            new Container({
+                components: [
+                    new PictureInPictureToggleButton(),
+                    new AirPlayToggleButton(),
+                    new CastToggleButton(),
+                    new VRToggleButton(),
+                    new SettingsToggleButton({ settingsPanel: settingsPanel}),
+                    new FullscreenToggleButton(),
+                ],
+                cssClasses: ['controlbar-top','controlbar-small'],
+            }),
+        ],
+        cssClasses: ['titlebar-small']
+    });
+
+    let controlBar = new ControlBar({
+        components: [
+
+            settingsPanel,
+            new Container({
+                components: [
+                    new PlaybackTimeLabel({ timeLabelMode: PlaybackTimeLabelMode.CurrentTime, hideInLivePlayback: true }),
+                    new SeekBar({ label: new SeekBarLabel() }),
+                    new PlaybackTimeLabel({ timeLabelMode: PlaybackTimeLabelMode.TotalTime, cssClasses: ['text-right'] }),
+                ],
+                cssClasses: ['controlbar-top'],
+            }),
+            new Container({
+                components: [
+                    new PlaybackToggleButton(),
+                    new VolumeToggleButton(),
+                    new VolumeSlider(),
+                    rewindButton,
+                    forwardButton,
+                    new Spacer(),
+                    new PictureInPictureToggleButton(),
+                    new AirPlayToggleButton(),
+                    new CastToggleButton(),
+                    new VRToggleButton(),
+                    new SettingsToggleButton({ settingsPanel: settingsPanel }),
+                    new FullscreenToggleButton(),
+                ],
+                cssClasses: ['controlbar-bottom'],
+            }),
+        ],
+    });
+
+    let nicam = new Label({text: '', cssClass:'nicam'});
+    let titleBar = new TitleBar({cssClasses:['metadata']});
+    titleBar.addComponent(nicam);
+
+    ///////////////////////////////////////////////
+    // Default UI
+    ///////////////////////////////////////////////
+    return new UIContainer({
+        components: [
+            subtitleOverlay,
+            new BufferingOverlay(),
+            new PlaybackToggleOverlay(),
+            new CastStatusOverlay(),
+            middleButtons,
+            controlBar,
+            topBar,
+            ctaBar,
+            titleBar,
+            new RecommendationOverlay(),
+            new Watermark(),
+            errorMessageOverlay,
+        ],
+        // hideDelay: -1,
+    });
+
+
   }
 }
